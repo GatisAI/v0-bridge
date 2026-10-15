@@ -1,0 +1,12 @@
+export class BridgeError extends Error { constructor(message,status=502){super(message);this.status=status;} }
+export const uid=p=>p+crypto.randomUUID().replaceAll('-','');
+export const clone=x=>structuredClone(x);
+export function stable(x){if(Array.isArray(x))return '['+x.map(stable).join(',')+']';if(x&&typeof x==='object')return '{'+Object.keys(x).sort().filter(k=>x[k]!==undefined).map(k=>JSON.stringify(k)+':'+stable(x[k])).join(',')+'}';return JSON.stringify(x);}
+export async function hash(text){return [...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text)))].map(x=>x.toString(16).padStart(2,'0')).join('');}
+export function randomToken(prefix){const b=crypto.getRandomValues(new Uint8Array(32));return prefix+[...b].map(x=>x.toString(16).padStart(2,'0')).join('');}
+export function constantEqual(a,b){let d=a.length^b.length;for(let i=0;i<Math.max(a.length,b.length);i++)d|=(a.charCodeAt(i)||0)^(b.charCodeAt(i)||0);return d===0;}
+export function json(data,status=200,headers={}){return new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store',...headers}});}
+export function failure(e,protocol='openai'){const status=e instanceof BridgeError?e.status:500;const message=e instanceof BridgeError?e.message:'Internal bridge error. Check server configuration; no automatic upstream retry.';return json(protocol==='anthropic'?{type:'error',error:{type:status===401?'authentication_error':'api_error',message}}:{error:{message,type:'bridge_error',code:status}},status);}
+export async function readBody(req,max=2000000){if(Number(req.headers.get('content-length')||0)>max)throw new BridgeError('Body too large.',413);const reader=req.body?.getReader();let chunks=[],n=0;if(!reader)throw new BridgeError('Expected JSON body.',400);while(true){const {value,done}=await reader.read();if(done)break;n+=value.length;if(n>max){await reader.cancel();throw new BridgeError('Body too large.',413);}chunks.push(value);}const all=new Uint8Array(n);let at=0;for(const c of chunks){all.set(c,at);at+=c.length;}let data;try{data=JSON.parse(new TextDecoder().decode(all));}catch{throw new BridgeError('Expected JSON object.',400);}if(!data||typeof data!=='object'||Array.isArray(data))throw new BridgeError('Expected JSON object.',400);return data;}
+export const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+export function integer(value,def,min=1,max=100000){const n=Number(value??def);return Number.isInteger(n)&&n>=min&&n<=max?n:def;}

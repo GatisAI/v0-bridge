@@ -1,0 +1,26 @@
+{
+  "name": "v0-vercel-bridge",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Experimental v0 v2 API bridge with first-run landing, PIN-gated key candidates, browser-only ENV generator and Redis sessions.",
+  "engines": {
+    "node": "22.x"
+  },
+  "scripts": {
+    "dev": "node --env-file-if-exists=.env scripts/dev.mjs",
+    "test": "node --test test/*.test.js",
+    "test:integration": "node test/integration.mjs",
+    "build": "node scripts/check.mjs",
+    "check": "npm run build && npm test",
+    "test:ui": "node test/ui.mjs"
+  },
+  "dependencies": {
+    "ajv": "8.20.0",
+    "cross-spawn": "7.0.6"
+  },
+  "devDependencies": {
+    "playwright": "1.64.1",
+    "redis": "^5.12.1"
+  }
+}

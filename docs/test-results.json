@@ -1,0 +1,127 @@
+{
+  "date_utc": "2026-10-15",
+  "remote_vercel_deployed": false,
+  "node_runtime_after_restart": "22.23.3",
+  "node_runtime_initial": "24.14.1",
+  "unit_tests_passed": 25,
+  "production_dependency_audit_vulnerabilities": 0,
+  "hosted_upstash_rest_lua_integration_passed": true,
+  "clients": [
+    {
+      "client": "codex",
+      "version": "0.162.1",
+      "model": "openai/gpt-6-astra",
+      "initial_client_success": true,
+      "after_process_restart_success": true,
+      "same_client_thread": true,
+      "context_marker_recalled": true,
+      "own_project_tests_passed": 57,
+      "independent_summary_acceptance_tests": 5,
+      "independent_acceptance_passed": true,
+      "core_sha_matches_client": true,
+      "session_upstream_generations": 11,
+      "remote_chat_message_count": 22,
+      "remote_chat_roles": {
+        "assistant": 11,
+        "user": 11
+      },
+      "upstream_chat_count_for_session": 1
+    },
+    {
+      "client": "claude",
+      "version": "2.1.301",
+      "model": "anthropic/claude-fable-5.1",
+      "initial_client_success": true,
+      "after_process_restart_success": true,
+      "same_client_thread": true,
+      "context_marker_recalled": true,
+      "own_project_tests_passed": 42,
+      "independent_summary_acceptance_tests": 5,
+      "independent_acceptance_passed": true,
+      "core_sha_matches_client": true,
+      "session_upstream_generations": 7,
+      "remote_chat_message_count": 14,
+      "remote_chat_roles": {
+        "assistant": 7,
+        "user": 7
+      },
+      "upstream_chat_count_for_session": 1
+    }
+  ],
+  "ordinary_chat_sdk_models_passed": [
+    {
+      "model": "openai/gpt-6-astra",
+      "protocol": "chat",
+      "passed": true
+    },
+    {
+      "model": "openai/gpt-6.1-sol",
+      "protocol": "responses",
+      "passed": true
+    },
+    {
+      "model": "anthropic/claude-fable-5.1",
+      "protocol": "anthropic",
+      "passed": true
+    },
+    {
+      "model": "anthropic/claude-opus-5.5",
+      "protocol": "chat",
+      "passed": true
+    }
+  ],
+  "caveats": [
+    "CLI tests ran locally, not on a public Vercel deployment.",
+    "Local live CLI tests used real Redis through a REST test adapter. Hosted Upstash separately tested state/locks/Lua/cache with mocked v0.",
+    "Codex test-only sandbox disabled because host lacks bwrap; user launcher keeps normal sandbox.",
+    "Seed projects came from prior inventory tests; Node test extended them rather than creating them from scratch.",
+    "Tools emulated, streams buffered, no verified native effort/hard token limits."
+  ],
+  "ordinary_chat_after_restart": [
+    {
+      "label": "astra",
+      "after_process_restart": true,
+      "passed": true
+    },
+    {
+      "label": "sol",
+      "after_process_restart": true,
+      "passed": true
+    }
+  ],
+  "v0_generations_in_node_validation": 24,
+  "reported_total_creditsCost": 9.6977778,
+  "release": "0.2.0",
+  "ui_smoke_checks_passed": 18,
+  "default_state_retention_seconds": 172800,
+  "env_export_node22_native_parser_passed": true,
+  "landing_regression": [
+    {
+      "client": "codex",
+      "phase": "landing-regression",
+      "success": true,
+      "exit_code": 0,
+      "marker_recalled": true,
+      "checksum_matches": true,
+      "project_tests_passed": 57
+    },
+    {
+      "client": "claude",
+      "phase": "landing-regression",
+      "success": true,
+      "exit_code": 0,
+      "marker_recalled": true,
+      "checksum_matches": true,
+      "project_tests_passed": 42
+    }
+  ],
+  "visual_qa": [
+    "desktop landing",
+    "mobile light/dark",
+    "desktop/mobile setup",
+    "PIN error",
+    "inactive candidate",
+    "env confirmation",
+    "API docs"
+  ]
+}

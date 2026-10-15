@@ -1,0 +1,29 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "buildCommand": "npm run build",
+  "functions": {
+    "api/gateway.js": {
+      "maxDuration": 300,
+      "includeFiles": "public/**"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/v1/:path*",
+      "destination": "/api/gateway?route=/v1/:path*"
+    },
+    {
+      "source": "/setup/:path*",
+      "destination": "/api/gateway?route=/setup/:path*"
+    },
+    {
+      "source": "/health",
+      "destination": "/api/gateway?route=/health"
+    },
+    {
+      "source": "/",
+      "destination": "/api/gateway?route=/"
+    }
+  ]
+}
