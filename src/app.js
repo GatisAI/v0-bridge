@@ -21,7 +21,7 @@ export async function handle(req,env=process.env,deps={}){let p='chat';try{
  if(req.method==='GET'&&path==='/v1/bridge/capabilities')return json(capability);
  const routes={'/v1/chat/completions':'chat','/v1/responses':'responses','/codex/v1/responses':'responses','/v1/messages':'anthropic'};
  p=routes[path];if(!p)throw new BridgeError('Not found.',404);if(req.method!=='POST')throw new BridgeError('Use POST.',405);
- const body=await readBody(req,750000);body._model_config=modelRegistry(env);const effort=validateRequest(body);normalizeTools(body,p);
+ const body=await readBody(req,3000000);body._model_config=modelRegistry(env);const effort=validateRequest(body);normalizeTools(body,p);
  if(effort&&env.V0_EFFORT_MODE==='reject')throw new BridgeError('Explicit effort rejected: native control unverified.',400);
  const store=deps.store||storeFor(env);await store.rate(keyId);
  const scope=await resolveScope(body,p,req.headers.get('x-v0-session'),keyId,store);
