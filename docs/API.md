@@ -4,14 +4,22 @@
 
 `Authorization: Bearer YOUR_GATEWAY_KEY` or Anthropic `x-api-key`. Minimum configured key length24characters; use32random bytes/64hex recommended. No CORS wildcard, privileged browser admin, or cookie auth. A separate public setup module exists below. Browser cross-origin apps need an explicitly designed CORS policy or their own backend proxy; do not put a shared private key into public frontend code.
 
-Send `X-V0-Session: unique-and-stable-id` (letters/digits/`_.:-`, max160). API clients may also send standard provider headers; these are not forwarded as authentication to v0.
+Send `X-V0-Session: unique-and-stable-id` (letters/digits/`_.:-`, max160) to override session routing. Otherwise Responses recognizes Codex thread-id/session-id headers and client_metadata.thread_id/session_id; Anthropic recognizes x-claude-code-session-id and session_id inside JSON metadata.user_id. Native IDs must agree and satisfy the same character/length constraints. Gateway key ID, protocol and model also isolate scopes; session IDs are not authentication credentials. A previous_response_id must belong to the same key/model and match any supplied session identity. Without identity or a response link, each request gets a fresh scope without retry deduplication. Prompt content, cache keys, device/account IDs and request IDs are not session identities. Provider headers are not forwarded as upstream authentication.
+
+## Model naming
+
+Use canonical public IDs: gpt-6-astra, gpt-6.1-sol, claude-fable-5.1, claude-opus-5.5. Both GET /openai/v1/models and GET /v1/models list public IDs. All generation adapters accept those IDs, legacy vendor-prefixed IDs and configured short aliases. The registry maps each to an unchanged upstreamId; upstream reporting is validated against that upstream ID, while client response model fields (including SSE) use the public ID. Unknown names or mismatched upstream models fail without fallback.
+
+MODELS_JSON entries use {id,upstreamId,alias,label}; optional aliases adds explicit compatibility names. Old built-in prefixed entries are normalized automatically. Custom legacy IDs need an explicit publicId or the new entry shape. Duplicate/ambiguous mappings are rejected. Existing version-2 response lineage is compared using normalized upstream identity before generation; changing between aliases does not switch models. See README for the complete mapping and migration policy.
+
+Canonical routes: /openai/v1/chat/completions, /openai/v1/responses, /anthropic/v1/messages. The /v1 routes below remain compatibility aliases.
 
 ## Chat Completions
 
 POST `/v1/chat/completions`:
 
 ```json
-{"model":"astra","messages":[{"role":"user","content":"Hello"}],"stream":false}
+{"model":"gpt-6-astra","messages":[{"role":"user","content":"Hello"}],"stream":false}
 ```
 
 For follow-up send accumulated user/assistant history and the same session header. Text content only. `tools` uses function/function.parameters convention. `tool_choice` auto/none/required or named tool; `parallel_tool_calls:false` requests one call maximum. The caller must execute returned tool_calls and append tool messages. Never trust generated commands without permission/sandbox review.
@@ -21,17 +29,17 @@ For follow-up send accumulated user/assistant history and the same session heade
 POST `/v1/responses`:
 
 ```json
-{"model":"astra","input":"Remember ORCHID"}
+{"model":"gpt-6-astra","input":"Remember ORCHID"}
 ```
 
-Then send `{"model":"astra","previous_response_id":"resp_...","input":"What word?"}`. Response history is Redis scoped; previous IDs from another key/session/model are rejected. Caller-defined function/custom tools and namespace wrappers are supported. Native built-ins, item_reference, images/compaction are not. Codex additional_tools items are parsed as tool declarations.
+Then send `{"model":"gpt-6-astra","previous_response_id":"resp_...","input":"What word?"}`. Response history is Redis scoped; previous IDs from another key/session/model are rejected. Caller-defined function/custom tools and namespace wrappers are supported. Native built-ins, item_reference, images/compaction are not. Codex additional_tools items are parsed as tool declarations.
 
 ## Anthropic Messages
 
 POST `/v1/messages`:
 
 ```json
-{"model":"fable","max_tokens":1024,"messages":[{"role":"user","content":"Hello"}]}
+{"model":"claude-fable-5.1","max_tokens":1024,"messages":[{"role":"user","content":"Hello"}]}
 ```
 
 Tools use `name`, `description`, `input_schema`; round-trip via assistant tool_use + user tool_result blocks. Transport cache_control metadata is normalized, while same-named fields inside tool arguments are preserved. Native thinking blocks are not supported.

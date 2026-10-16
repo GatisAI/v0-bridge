@@ -55,19 +55,30 @@ Create candidates on landing or locally with `node -e "console.log(require('cryp
 
 ## Models from env
 
-`MODELS_JSON` is an array of `{id,alias,label}` (or ID strings). Defaults:
-- `openai/gpt-6-astra` / `astra`
-- `anthropic/claude-fable-5.1` / `fable`
-- `anthropic/claude-opus-5.5` / `opus`
-- `openai/gpt-6.1-sol` / `sol`
+Public client IDs have no vendor prefix. The bridge uses explicit mappings, not prefix stripping or model fallback:
 
-`/v1/models`, routing and landing read this allowlist; it is **not upstream availability discovery**. Only models your v0 account can access will actually work. Adjust CLI launcher `--model` if replacing defaults. Changing model/protocol creates a separate session scope.
+| Public ID | Exact upstream  ID | Short alias |
+|---|---|---|
+| gpt-6-astra | openai/gpt-6-astra | astra |
+| gpt-6.1-sol | openai/gpt-6.1-sol | sol |
+| claude-fable-5.1 | anthropic/claude-fable-5.1 | fable |
+| claude-opus-5.5 | anthropic/claude-opus-5.5 | opus |
+
+The final MODELS_JSON format is an array of {id, upstreamId, alias, label}, with optional aliases (array). See .env.example for all four entries. Omitting MODELS_JSON keeps these defaults. The browser ENV Generator exports this same canonical format.
+
+Migration: existing string entries and {id,alias,label} entries using any of the four old prefixed IDs are normalized automatically in memory; no Production env write is required. Public IDs, old prefixed IDs, and configured short aliases resolve to the same model. Explicitly configured aliases are preserved. Catalogs, examples and top-level client response model fields use canonical public IDs. Diagnostic billing metadata retains exact upstream IDs for auditing.
+
+For an unknown custom legacy model, supply an explicit public name: {"id":"custom-model","upstreamId":"vendor/exact-model","alias":"custom"}, or retain the old id with {"id":"vendor/exact-model","publicId":"custom-model","alias":"custom"}. The bridge deliberately does not guess a public name from an arbitrary prefix. Duplicate or ambiguous IDs/aliases/upstream mappings cause a configuration error; unknown requested models fail before generation. Built-in mappings cannot be reassigned to another model.
+
+Both /openai/v1/models and /v1/models list this allowlist, not live upstream availability. Every adapter sends upstreamId unchanged to  and validates the reported model against upstreamId. A mismatch is rejected without retry/fallback. Response lineage normalizes model identity before comparison; existing version-2 records using prefixed names remain usable, with the same key ID, namespace and retention. Older record versions still require explicit history under the existing client-owned-history policy; model naming does not add a new invalidation. This engine has no response cache or shared upstream session lookup; alias changes do not create one.
+
+Use public IDs in clients, for example model="gpt-6-astra". For custom allowlists, pass a listed public ID with the launcher's --model option. Changing only the alias does not change the upstream model.
 
 ## Why Redis remains
 
 A unique stable `X-V0-Session` + stable gateway key ID + model + protocol maps to one chat v0. Redis stores mapping, full client history, response IDs, retry cache, distributed session lock and UTC daily safeguard counters. **No active gateway secret key list is stored in Redis.**
 
-Default retention is48hours (`STATE_TTL_SECONDS=172800`). Expired mappings cannot guarantee resume. Keep namespace unchanged across redeploys; use unique namespaces for Production/Preview/untrusted forks. Clearing/forking history with an existing session causes409. Without an explicit header, first-user-content scope is best-effort and can collide for people sharing a key. Responses can restore scope via previous_response_id.
+Default retention is 48 hours (`STATE_TTL_SECONDS=172800`). Expired mappings cannot guarantee resume. Keep namespace unchanged across redeploys; use unique namespaces for Production/Preview/untrusted forks. Clearing/forking history with an existing session causes 409. Explicit X-V0-Session takes precedence; choose a new value for independent sessions or forks, including with the launcher. Otherwise Responses recognizes Codex thread-id/session-id headers or client_metadata.thread_id/session_id; Anthropic recognizes x-claude-code-session-id or session_id inside JSON metadata.user_id. Conflicting or invalid native IDs are rejected. Responses can restore scope via previous_response_id, but any supplied identity and model must match. Without identity or a response link, every request receives a fresh scope without retry deduplication. Prompt content, cache keys and request IDs never merge conversations. Existing explicit-session mappings remain compatible; old content-derived mappings are not automatically adopted by native IDs.
 
 Redis stores full histories/tool results; secure credentials/access. Long Responses snapshots may use substantial storage. Free-tier capacity is provider-dependent, not a promise of unlimited coding requests. No Supabase needed for this version.
 

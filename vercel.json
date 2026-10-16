@@ -10,6 +10,18 @@
   },
   "rewrites": [
     {
+      "source": "/codex/:path*",
+      "destination": "/api/gateway?route=/codex/:path*"
+    },
+    {
+      "source": "/anthropic/:path*",
+      "destination": "/api/gateway?route=/anthropic/:path*"
+    },
+    {
+      "source": "/openai/:path*",
+      "destination": "/api/gateway?route=/openai/:path*"
+    },
+    {
       "source": "/v1/:path*",
       "destination": "/api/gateway?route=/v1/:path*"
     },

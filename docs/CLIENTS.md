@@ -34,7 +34,7 @@ Launcher does not pass v0/Redis credentials to the child CLI. Still use a client
 
 ```toml
 model_provider = "v0bridge"
-model = "openai/gpt-6-astra"
+model = "gpt-6-astra"
 model_reasoning_effort = "high"
 [model_providers.v0bridge]
 name = "v0 bridge"
@@ -51,8 +51,10 @@ Set `V0_BRIDGE_KEY` to the gateway key, never v0 key. Native effort is NOT estab
 
 ## Manual Claude
 
-Set ANTHROPIC_BASE_URL to domain (no /v1), ANTHROPIC_AUTH_TOKEN to gateway key, ANTHROPIC_CUSTOM_HEADERS to `X-V0-Session: unique-conversation-id`. Model `anthropic/claude-fable-5.1`. Follow the launcher compatibility flags to avoid unsupported native thinking/tool search. Never disable permissions globally just to make a client run.
+Set ANTHROPIC_BASE_URL to domain (no /v1), ANTHROPIC_AUTH_TOKEN to gateway key, ANTHROPIC_CUSTOM_HEADERS to `X-V0-Session: unique-conversation-id`. Model `claude-fable-5.1`. Follow the launcher compatibility flags to avoid unsupported native thinking/tool search. Never disable permissions globally just to make a client run.
 
 **Thinking request compatibility:** Claude Code may insist on a thinking/adaptive config for some model IDs even with compatibility flags. The adapter accepts recognized thinking configs for transport compatibility, but does not forward a native thinking budget or return signed native thinking blocks. Header `X-V0-Thinking-Control` discloses this. Do not interpret successful requests as native thinking-control support.
 
-If you change the env model allowlist, pass an actual listed ID: `node scripts/client.mjs codex --project PATH --session NEW --model openai/your-model`. Keep model/protocol unchanged on resume.
+If you change the env model allowlist, pass an actual listed ID: `node scripts/client.mjs codex --project PATH --session NEW --model your-public-model`. Keep model/protocol unchanged on resume.
+
+Public model names are mapped by the bridge to unchanged vendor-prefixed  IDs. Old prefixed IDs remain accepted aliases, including for existing response lineage; client response model fields are canonical public names. See README Models from env for explicit mappings and migration.

@@ -1,11 +1,13 @@
 import {BridgeError} from './util.js';
-export const DEFAULT_MODELS=[
- {id:'openai/gpt-6-astra',alias:'astra',label:'GPT-6 Astra'},
- {id:'anthropic/claude-fable-5.1',alias:'fable',label:'Claude Fable 5.1'},
- {id:'anthropic/claude-opus-5.5',alias:'opus',label:'Claude Opus 5.5'},
- {id:'openai/gpt-6.1-sol',alias:'sol',label:'GPT-6.1 Sol'}
-];
-export function readModels(env={}){let list=DEFAULT_MODELS;if(env.MODELS_JSON){try{list=JSON.parse(env.MODELS_JSON);}catch{throw new BridgeError('Invalid MODELS_JSON server configuration.',503);}}if(!Array.isArray(list)||!list.length||list.length>20)throw new BridgeError('MODELS_JSON must contain 1-20 model entries.',503);const ids=new Set(),aliases=new Set();return list.map(x=>{if(typeof x==='string')x={id:x,alias:x.split('/').at(-1),label:x};if(!x||typeof x.id!=='string'||!/^[a-zA-Z0-9._/-]{1,160}$/.test(x.id))throw new BridgeError('Invalid model ID in MODELS_JSON.',503);const alias=x.alias||x.id.split('/').at(-1);if(typeof alias!=='string'||!/^[a-zA-Z0-9_-]{1,60}$/.test(alias)||ids.has(x.id)||aliases.has(alias))throw new BridgeError('Invalid/duplicate model alias or ID.',503);ids.add(x.id);aliases.add(alias);return {id:x.id,alias,label:typeof x.label==='string'?x.label.slice(0,100):x.id};});}
-export function modelRegistry(env){const list=readModels(env);return {ids:list.map(x=>x.id),aliases:Object.fromEntries(list.map(x=>[x.alias,x.id]))};}
+import {DEFAULT_MODELS,normalizeModelList} from '../public/assets/env.js';
+export {DEFAULT_MODELS};
+export function readModels(env={}){
+ try{return normalizeModelList(env.MODELS_JSON?JSON.parse(env.MODELS_JSON):DEFAULT_MODELS);}
+ catch(error){throw new BridgeError('Invalid MODELS_JSON: '+error.message,503);}
+}
+export function modelRegistry(env={}){
+ const list=readModels(env);
+ return {ids:list.map(m=>m.id),entries:Object.fromEntries(list.map(m=>[m.id,m])),aliases:Object.fromEntries(list.flatMap(m=>[m.id,m.upstreamId,m.alias,...(m.aliases||[])].map(name=>[name,m.id])))};
+}
 export function hasGatewayKey(env){if(env.GATEWAY_KEYS_JSON){try{const k=JSON.parse(env.GATEWAY_KEYS_JSON);return k&&!Array.isArray(k)&&typeof k==='object'&&Object.keys(k).length>0&&Object.entries(k).every(([id,v])=>/^[A-Za-z0-9_-]{1,64}$/.test(id)&&typeof v==='string'&&v.length>=24);}catch{return false;}}return typeof env.GATEWAY_API_KEY==='string'&&env.GATEWAY_API_KEY.length>=24;}
 export function setupStatus(env){let models,modelsValid=true;try{models=readModels(env);}catch{models=DEFAULT_MODELS;modelsValid=false;}const complete=Boolean(env.V0_API_KEY?.trim()&&hasGatewayKey(env)&&env.UPSTASH_REDIS_REST_URL?.startsWith('https://')&&env.UPSTASH_REDIS_REST_TOKEN?.trim()&&modelsValid);return {configured:complete,setupRequired:!complete,pinRequired:Boolean(env.ADMIN_PIN),models,retentionHours:Number(env.STATE_TTL_SECONDS||172800)/3600,configurationVerified:false};}

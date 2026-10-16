@@ -2,6 +2,17 @@
 
 Date: 2026-10-15 UTC. Machine-readable sanitized results: [test-results.json](test-results.json).
 
+## Current checkpoint: public model naming
+
+This checkpoint separates public names from upstream IDs without changing the four working upstream model IDs. The older live-client/Redis/browser reports below are historical evidence, not a rerun of this checkpoint.
+
+- Final MODELS_JSON shape: [{"id":"gpt-6-astra","upstreamId":"openai/gpt-6-astra","alias":"astra","label":"GPT-6 Astra"}, ...]. The complete four-model value is in .env.example; the browser generator emits the same canonical schema.
+- Old built-in prefixed string/object entries and request IDs remain accepted. Legacy custom entries require an explicit publicId or {id,upstreamId} mapping; arbitrary prefixes are never stripped. Duplicate/ambiguous entries fail closed. Version-2 lineage with old model names remains compatible.
+- Source/config import validation passed. All 79 offline tests passed when each test file was executed directly with Node (the normal node --test child-process runner was blocked by Windows spawn EPERM). Eight model-registry tests include 144 mocked adapter/name/stream combinations, catalog aliases, migration, ambiguity checks, lineage and upstream mismatch rejection.
+- Browser verification remains INCOMPLETE: bundled Playwright Chromium was absent; one recovery using installed Edge also failed with spawn EPERM. Updated UI assertions have not passed in a browser on this machine.
+- Real Redis integration remains INCOMPLETE: local REST adapter was unavailable (503); redis-server was not found on PATH. No production credentials or services were substituted. Upstream in the integration suite is mocked.
+- No live upstream generation, Production environment edit, deployment, commit or push was performed for this naming checkpoint. This directory is not a Git repository.
+
 ## Verified
 
 - Native Node Web Standard handler layout/config researched against official Vercel docs. Source/config import check passes.

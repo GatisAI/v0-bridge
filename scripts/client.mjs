@@ -4,7 +4,7 @@ const args=process.argv.slice(2);const client=args.shift();if(!['codex','claude'
 const option=(name,def)=>{const i=args.indexOf(name);return i>=0?args[i+1]:def;};const resume=args.includes('--resume');const project=path.resolve(option('--project',process.cwd()));const session=option('--session',resume?null:crypto.randomUUID());if(!session||!/^[a-zA-Z0-9_-]{1,80}$/.test(session))throw new Error('--session required on resume; use letters/digits/_/- up to80.');
 const base=(process.env.BRIDGE_BASE_URL||'http://127.0.0.1:8787').replace(/\/$/,'');const u=new URL(base);if(u.protocol!=='https:'&&!['127.0.0.1','localhost'].includes(u.hostname))throw new Error('Use HTTPS for remote endpoints.');
 const key=process.env.GATEWAY_CLIENT_KEY||process.env.GATEWAY_API_KEY;if(!key||key.length<24)throw new Error('Set GATEWAY_CLIENT_KEY to the bridge API key.');
-const model=option('--model',client==='codex'?'openai/gpt-6-astra':'anthropic/claude-fable-5.1');if(!/^[a-zA-Z0-9._/-]{1,160}$/.test(model))throw new Error('Invalid model ID.');
+const model=option('--model',client==='codex'?'gpt-6-astra':'claude-fable-5.1');if(!/^[a-zA-Z0-9._/-]{1,160}$/.test(model))throw new Error('Invalid model ID.');
 const home=path.join(os.homedir(),'.v0-bridge-clients',client,session);if(fs.existsSync(home)&&!resume)throw new Error('Session exists: use --resume or a NEW session.');if(!fs.existsSync(home)&&resume)throw new Error('Saved client home not found.');fs.mkdirSync(home,{recursive:true});
 const env={...process.env};for(const k of Object.keys(env))if(/^(UPSTASH_|KV_|POSTGRES_|ADMIN_)/.test(k)||['V0_API_KEY','GATEWAY_API_KEY','GATEWAY_KEYS_JSON','DATABASE_URL','ANTHROPIC_API_KEY','OPENAI_API_KEY'].includes(k))delete env[k];
 let cmdArgs;

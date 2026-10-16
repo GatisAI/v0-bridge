@@ -66,13 +66,13 @@ test('incompressible state obeys stored limit; Redis command includes JSON overh
  const size=Buffer.byteLength(JSON.stringify(args));
  assert.equal(Buffer.byteLength(commandBody(args,{MAX_REDIS_REQUEST_BYTES:String(size)})),size);
 });
-test('oversized next turn preserves old session and consumes no upstream calls or reservations',async()=>{
- const config={MAX_RAW_STATE_BYTES:'2048'},store=new MemoryStore(config),scope='preflight';
+test('oversized retained history preserves legacy records and consumes no upstream calls or reservations',async()=>{
+ const config={MAX_RAW_STATE_BYTES:'2048',V0_API_KEY:'fixture-only'},store=new MemoryStore(config),scope='preflight';
  const old={status:'ok',history:[{role:'user',content:'first'}],chat_id:'existing-chat',generations:1};
  await store.put('session:'+scope,old);
  let calls=0;const original=global.fetch;global.fetch=async()=>{calls++;throw Error('Unexpected upstream');};
  try{
-  await assert.rejects(runEngine({body:{model:'astra',messages:[...old.history,{role:'user',content:'x'.repeat(6000)}]},p:'chat',scope,keyId:'main',store,env:config,signal:new AbortController().signal}),e=>e.status===413);
+  await assert.rejects(runEngine({body:{model:'astra',input:[...old.history,{role:'user',content:'x'.repeat(6000)}]},p:'responses',scope,keyId:'main',store,env:config,signal:new AbortController().signal}),e=>e.status===413);
   assert.equal(calls,0);assert.equal(store.usage.generations,0);
   assert.deepEqual(await store.get('session:'+scope),old);
   assert.equal(store.locks.size,0);
@@ -84,27 +84,36 @@ function mockRedis(records){
  store.lock=async()=>async()=>{};store.reserve=async()=> 'test-day';store.charge=async()=>{};
  return store;
 }
-test('large Responses history survives store recreation, continuation and cached retry',async()=>{
- const records=new Map(),original=global.fetch,paths=[];let posts=0;
- global.fetch=async(url,options)=>{paths.push(new URL(url).pathname);if(options.method==='POST'){posts++;return Response.json({chatId:'large-chat',messageId:'m'+posts});}return Response.json({finishReason:'stop',parts:[{type:'text',text:JSON.stringify({type:'message',text:'answer-'+posts})}],usage:{model:MODELS[0],tokens:{input:1,output:1},creditsCost:{total:0}}});};
- const setup={p:'responses',scope:'large-history',keyId:'main',env:{V0_API_KEY:'fake',V0_BASE_URL:'http://upstream.test/v2'},signal:new AbortController().signal};
+test('large Responses lineage survives store recreation without retry caching',async()=>{
+ const records=new Map(),original=global.fetch,paths=[],payloads=[];let posts=0;
+ global.fetch=async(url,options)=>{
+  paths.push(new URL(url).pathname);assert.equal(options.method,'POST');posts++;payloads.push(JSON.parse(options.body));
+  const items=[{object:'chat',id:'large-chat-'+posts},{object:'message',id:'m'+posts,role:'assistant',finishReason:'stop',parts:[{type:'text',text:JSON.stringify({type:'message',text:'answer-'+posts})}],usage:{model:MODELS[0],tokens:{input:1,output:1},creditsCost:{total:0}}}];
+  return new Response(items.map(item=>'data: '+JSON.stringify(item)+String.fromCharCode(10,10)).join(''));
+ };
+ const setup={p:'responses',keyId:'main',env:{V0_API_KEY:'fake',V0_BASE_URL:'http://upstream.test/v2'}};
  try{
-  const first=await runEngine({...setup,store:mockRedis(records),body:{model:'astra',input:'coding context '.repeat(80000)}});
+  const input='coding context '.repeat(80000);
+  const first=await runEngine({...setup,store:mockRedis(records),body:{model:'astra',input}});
   const body={model:'astra',previous_response_id:first.data.id,input:'continue'};
   const second=await runEngine({...setup,store:mockRedis(records),body});
-  assert.equal(second.billing.chat_id,'large-chat');assert.equal(second.billing.upstream_mode,'continue');
-  const cached=await runEngine({...setup,store:mockRedis(records),body});
-  assert.equal(cached.data.id,second.data.id);assert.equal(cached.billing.cached,true);assert.equal(posts,2);
-  assert(paths.includes('/v2/chats/large-chat/messages/async'));
-  assert([...records.values()].some(value=>value.startsWith('gz:')));
+  const repeated=await runEngine({...setup,store:mockRedis(records),body});
+  assert.notEqual(first.billing.chat_id,second.billing.chat_id);assert.equal(second.billing.upstream_mode,'create');
+  assert.notEqual(repeated.data.id,second.data.id);assert.equal(posts,3);
+  for(const payload of payloads.slice(1)){const history=JSON.parse(payload.message).CLIENT_HISTORY;assert.equal(history.length,3);assert.equal(history[0].content,input);assert.equal(history[2].content,'continue');}
+  assert(paths.every(path=>path==='/v2/chats/stream'));assert([...records.values()].some(value=>value.startsWith('gz:')));
  }finally{global.fetch=original;}
 });
-test('envelope repair cannot exceed the session generation safeguard',async()=>{
- const config={MAX_SESSION_GENERATIONS:'1',V0_API_KEY:'fake',V0_BASE_URL:'http://upstream.test/v2'},store=new MemoryStore(config),original=global.fetch;let posts=0;
- global.fetch=async(url,options)=>options.method==='POST'?(posts++,Response.json({chatId:'repair-chat',messageId:'m1'})):Response.json({finishReason:'stop',parts:[{type:'text',text:'not an envelope'}],usage:{model:MODELS[0],tokens:{input:1,output:1},creditsCost:{total:0}}});
+test('invalid envelope fails after one billed generation without repair or session state',async()=>{
+ const config={V0_API_KEY:'fake',V0_BASE_URL:'http://upstream.test/v2'},store=new MemoryStore(config),original=global.fetch;let posts=0;
+ global.fetch=async(url,options)=>{
+  assert.equal(new URL(url).pathname,'/v2/chats/stream');assert.equal(options.method,'POST');posts++;
+  const items=[{object:'chat',id:'invalid-chat'},{object:'message',id:'m1',role:'assistant',finishReason:'stop',parts:[{type:'text',text:'not an envelope'}],usage:{model:MODELS[0],tokens:{input:1,output:1},creditsCost:{total:0.1}}}];
+  return new Response(items.map(item=>'data: '+JSON.stringify(item)+String.fromCharCode(10,10)).join(''));
+ };
  try{
-  await assert.rejects(runEngine({body:{model:'astra',messages:[{role:'user',content:'hello'}]},p:'chat',scope:'repair-limit',keyId:'main',store,env:config,signal:new AbortController().signal}),e=>e.status===429);
-  assert.equal(posts,1);assert.equal(store.usage.generations,1);assert.equal((await store.get('session:repair-limit')).status,'failed');
+  await assert.rejects(runEngine({body:{model:'astra',messages:[{role:'user',content:'hello'}]},p:'chat',keyId:'main',store,env:config}),error=>error.status===502);
+  assert.equal(posts,1);assert.equal(store.usage.generations,1);assert.equal(store.usage.cost,0.1);assert.equal(store.data.size,0);
  }finally{global.fetch=original;}
 });
 test('Redis daily and rate settings validate and pass configured values',async()=>{
