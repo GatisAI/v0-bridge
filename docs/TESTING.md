@@ -1,8 +1,14 @@
 # Test evidence and verification boundary
 
+## Latest checkpoint: create-stream terminal reconciliation
+
+See [UPSTREAM_STREAM_FIX.md](UPSTREAM_STREAM_FIX.md) and [upstream-fix-results.json](upstream-fix-results.json) for the current hotfix and its verification boundary. Source/config checks and93offline tests passed. Real local Redis integration passed with mocked upstream. Real local v0 tests: Astra10/10 parallel; Fable5/10 with upstream rate limits; Sol/Opus smoke tests passed. Real Codex read + resume passed without a manual session header. No Production deployment has been performed for this hotfix.
+
+The sections below describe earlier checkpoints. In particular, old reports of continuing one upstream chat per client session do not describe the current client-owned-context architecture.
+
 Date: 2026-10-15 UTC. Machine-readable sanitized results: [test-results.json](test-results.json).
 
-## Current checkpoint: public model naming
+## Earlier checkpoint: public model naming
 
 This checkpoint separates public names from upstream IDs without changing the four working upstream model IDs. The older live-client/Redis/browser reports below are historical evidence, not a rerun of this checkpoint.
 

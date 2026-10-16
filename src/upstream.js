@@ -1,5 +1,7 @@
 import {create} from 'jsondiffpatch';
 import {BridgeError} from './util.js';
+import {limits} from './limits.js';
+import {setTimeout as delay} from 'node:timers/promises';
 
 const patcher=create({});
 const forbiddenKeys=new Set(['__proto__','prototype','constructor']);
@@ -79,11 +81,59 @@ function configuration(env){
 }
 export async function createGeneration({env,payload,signal,onUpdate=()=>{},fetchImpl=fetch}){
  const {base,headers}=configuration(env);
- let chatId=null,messageId=null,message=null,parts=[],usage=null,finished=false;
+ let chatId=null,messageId=null,message=null,parts=[],usage=null,finished=false,chatSnapshots=0;
+ const httpError=async(response,stage)=>{
+  let rateLimited=response.status===429;
+  // v0 also returns HTTP403 for a JSON rate-limit denial. Classify only the
+  // observed exact marker, not all 403s (which may really be permissions).
+  if(response.status===403&&response.body){
+   const reader=response.body.getReader(),chunks=[];let size=0;
+   try{
+    while(true){
+     const {value,done}=await reader.read();if(done)break;
+     size+=value.byteLength;if(size>4096)break;chunks.push(Buffer.from(value));
+    }
+    if(size<=4096){
+     const error=JSON.parse(Buffer.concat(chunks).toString('utf8'));
+     rateLimited=error?.message==='You are being rate limited. Please try again later.';
+    }
+   }catch{}finally{await reader.cancel().catch(()=>{});reader.releaseLock();}
+  }else await response.body?.cancel().catch(()=>{});
+  console.warn(JSON.stringify({event:'v0_upstream_http_error',stage,status:response.status,rate_limited:rateLimited,chat_id:chatId,message_id:messageId}));
+  const message=rateLimited
+   ?'Upstream rate limit (HTTP '+response.status+') during '+stage+'; retry later. No automatic generation retry.'
+   :'Upstream HTTP '+response.status+' during '+stage+'; no automatic generation retry.';
+  return new BridgeError(message,rateLimited?429:502);
+ };
+ const acceptMessage=event=>{
+  if(typeof event.id!=='string'||!event.id||messageId&&messageId!==event.id)throw new BridgeError('Invalid upstream message identity.');
+  if(event.chatId!=null&&event.chatId!==chatId)throw new BridgeError('Mismatched upstream message chat.');
+  if(event.role!=='assistant'||!Array.isArray(event.parts))throw new BridgeError('Invalid upstream assistant message.');
+  messageId=event.id;message=event;parts=event.parts;usage=event.usage??usage;finished=event.finishReason!=null;
+ };
+ const reconcile=async()=>{
+  const config=limits(env),until=Date.now()+config.waitSeconds*1000;
+  let reads=0;
+  while(!finished){
+   if(signal?.aborted)throw new BridgeError('Request cancelled during upstream reconciliation.',504);
+   const remaining=until-Date.now();
+   if(remaining<=0)throw new BridgeError('Upstream message still pending after stream close; no automatic generation retry.',504);
+   const requestSignal=AbortSignal.any([...(signal?[signal]:[]),AbortSignal.timeout(Math.min(30000,remaining))]);
+   const response=await fetchImpl(base+'/chats/'+encodeURIComponent(chatId)+'/messages/'+encodeURIComponent(messageId),{method:'GET',headers,signal:requestSignal,redirect:'error'});
+   reads++;
+   if(!response.ok){throw await httpError(response,'message_reconciliation');}
+   let snapshot;try{snapshot=await response.json();}catch{throw new BridgeError('Upstream reconciliation returned invalid message JSON.');}
+   if(!snapshot||typeof snapshot!=='object')throw new BridgeError('Invalid upstream reconciliation message.');
+   acceptMessage(snapshot);
+   if(!finished)await delay(Math.min(config.pollMs,Math.max(1,until-Date.now())),undefined,{signal});
+  }
+  console.log(JSON.stringify({event:'v0_stream_reconciled',chat_id:chatId,message_id:messageId,reads,finish_reason:message.finishReason}));
+  await onUpdate({chatId,messageId,parts,usage,finished});
+ };
  try{
   if(signal?.aborted)throw new BridgeError('Request cancelled before generation.',504);
   const response=await fetchImpl(base+'/chats/stream',{method:'POST',headers,body:JSON.stringify(payload),signal,redirect:'error'});
-  if(!response.ok){await response.body?.cancel().catch(()=>{});throw new BridgeError(' HTTP '+response.status+'; upstream error body is not exposed.',response.status===429?429:502);}
+  if(!response.ok){throw await httpError(response,'create_stream');}
   for await(const record of readSse(response.body,signal)){
    if(record==='[DONE]')break;
    let event;try{event=JSON.parse(record);}catch{throw new BridgeError('Invalid upstream SSE JSON.');}
@@ -91,14 +141,10 @@ export async function createGeneration({env,payload,signal,onUpdate=()=>{},fetch
    if(event.object==='error')throw new BridgeError('Upstream generation failed; no automatic retry.');
    if(event.object==='chat'){
     if(typeof event.id!=='string'||!event.id||chatId&&chatId!==event.id)throw new BridgeError('Invalid upstream chat identity.');
-    chatId=event.id;
+    chatId=event.id;chatSnapshots++;
    }else if(event.object==='message'){
     if(event.role==='user')continue;
-    if(typeof event.id!=='string'||!event.id||messageId&&messageId!==event.id)throw new BridgeError('Invalid upstream message identity.');
-    messageId=event.id;message=event;
-    if(!Array.isArray(event.parts))throw new BridgeError('Invalid upstream message parts.');
-    parts=event.parts;usage=event.usage??usage;
-    finished=event.finishReason!=null;
+    acceptMessage(event);
    }else if(event.object==='message.parts.chunk'||event.object==='message.usage'){
     if(typeof event.id!=='string'||!event.id||messageId&&messageId!==event.id)throw new BridgeError('Mismatched upstream stream message.');
     messageId=event.id;
@@ -108,6 +154,9 @@ export async function createGeneration({env,payload,signal,onUpdate=()=>{},fetch
    await onUpdate({chatId,messageId,parts,usage,finished});
   }
   if(signal?.aborted)throw new BridgeError('Request cancelled.',504);
+  // create-chat streams close with a chat snapshot, not necessarily a message.
+  // Never infer success from that snapshot/usage alone: verify the actual message.
+  if(chatId&&messageId&&!finished&&(chatSnapshots>=2||usage!=null))await reconcile();
   if(!chatId||!messageId||!finished)throw new BridgeError('Upstream stream ended without a terminal message; no automatic retry.');
   return {chatId,messageId,message:{...message,parts,usage}};
  }catch(error){
